@@ -2,20 +2,29 @@ import Tema from '../models/Tema.js';
 import Dosen from '../models/Dosen.js';
 import Mahasiswa from '../models/Mahasiswa.js';
 import Jurusan from '../models/Jurusan.js';
+
 export const getAllTema = async (req, res) => {
   try {
     const userRole = req.user.role;
 
     if (userRole === "dosen") {
       const dosen = await Dosen.findOne({ user_id: req.user.id });
-      if (!dosen) return res.status(404).json({ error: "Dosen tidak ditemukan" });
+      if (!dosen || !dosen.jurusan) {
+        return res.status(404).json({ error: "Dosen atau jurusan tidak ditemukan" });
+      }
 
-      const data = await Tema.find({ dosen_id: dosen._id }).populate("dosen_id", "name");
+      const data = await Tema.find({ jurusan: dosen.jurusan }) // ✅ pakai ObjectId
+        .populate("dosen_id", "name")
+        .populate("jurusan", "name");
+
       return res.json(data);
     }
 
     if (userRole === "admin") {
-      const data = await Tema.find().populate("dosen_id", "name");
+      const data = await Tema.find()
+        .populate("dosen_id", "name")
+        .populate("jurusan", "name");
+
       return res.json(data);
     }
 
@@ -24,28 +33,31 @@ export const getAllTema = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+
+
+// /controller/temaController.js ✅ FORMAT JURUSAN SUDAH BENAR
 export const createTema = async (req, res) => {
   try {
     const { title, description } = req.body;
 
-    // Cari Dosen berdasarkan user login
     const dosen = await Dosen.findOne({ user_id: req.user.id });
-    if (!dosen) return res.status(404).json({ error: 'Dosen tidak ditemukan' });
+    if (!dosen || !dosen.jurusan) {
+      return res.status(404).json({ error: 'Dosen atau jurusan tidak ditemukan' });
+    }
 
     const tema = new Tema({
       dosen_id: dosen._id,
       title,
       description,
-      jurusan: dosen.jurusan // ⬅ WAJIB ADA INI!
+      jurusan: dosen.jurusan, // ✅ sekarang ObjectId
     });
 
     await tema.save();
-    res.status(201).json({ message: 'Tema created' });
+    res.status(201).json({ message: 'Tema created', tema });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
-};
-
+}
 
 export const getTemaById = async (req, res) => {
   try {
@@ -63,13 +75,11 @@ export const getTemaForMahasiswa = async (req, res) => {
     const mahasiswa = await Mahasiswa.findOne({ user_id: req.user.id });
     if (!mahasiswa) return res.status(404).json({ message: 'Mahasiswa tidak ditemukan' });
 
-    const temaIdList = await Jurusan.find({ name: mahasiswa.fakultas }).distinct('tema_id');
+    const jurusan = await Jurusan.findById(mahasiswa.jurusan_id);
+if (!jurusan) return res.status(404).json({ message: 'Jurusan tidak ditemukan' });
 
-    if (!temaIdList.length)
-      return res.status(404).json({ message: 'Tidak ada tema yang cocok dengan jurusan mahasiswa' });
-
-    const tema = await Tema.find({ _id: { $in: temaIdList } }, 'title description created_at');
-    res.json(tema);
+const tema = await Tema.find({ jurusan: jurusan._id }, 'title description created_at');
+res.json(tema);
   } catch (err) {
     res.status(500).json({ message: 'Gagal mengambil tema', error: err.message });
   }

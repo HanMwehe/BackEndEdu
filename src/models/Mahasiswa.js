@@ -1,5 +1,4 @@
 // /src/models/Mahasiswa.js
-
 import mongoose from 'mongoose';
 
 const mahasiswaSchema = new mongoose.Schema({
@@ -24,6 +23,11 @@ const mahasiswaSchema = new mongoose.Schema({
     type: String,
     required: true,
     trim: true,
+  },
+  jurusan_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Jurusan',
+    required: true,
   },
   created_at: {
     type: Date,

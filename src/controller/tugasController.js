@@ -46,17 +46,17 @@ export const getTugasById = async (req, res) => {
 };
 
 // getTugasForMahasiswa
-// getTugasForMahasiswa
 export const getTugasForMahasiswa = async (req, res) => {
   try {
     const mahasiswa = await Mahasiswa.findOne({ user_id: req.user.id });
     if (!mahasiswa) return res.status(404).json({ message: 'Mahasiswa tidak ditemukan' });
 
-    const temaIdList = await Jurusan.find({
-      name: { $regex: new RegExp(`^${mahasiswa.fakultas}$`, 'i') }
-    }).distinct('tema_id');
+    // Cari semua tema dari jurusan mahasiswa
+    const temaIdList = await Tema.find({ jurusan: mahasiswa.jurusan_id }).distinct('_id');
 
-    if (!temaIdList.length) return res.status(404).json({ message: 'Tidak ada tema untuk jurusan ini' });
+    if (!temaIdList.length) {
+      return res.status(404).json({ message: 'Tidak ada tema untuk jurusan ini' });
+    }
 
     const materiIdList = await Materi.find({ tema_id: { $in: temaIdList } }).distinct('_id');
 
@@ -64,10 +64,9 @@ export const getTugasForMahasiswa = async (req, res) => {
       .populate('materi_id', 'title')
       .sort({ created_at: -1 });
 
-    // Ambil tugas yang sudah dinilai (bukan cuma submit)
     const tugasYangSudahDinilai = await TugasSubmission.find({
       mahasiswa_id: mahasiswa._id,
-      status: 'graded'
+      status: 'graded',
     }).distinct('tugas_id');
 
     const tugasBelumDikerjakan = semuaTugas.filter(

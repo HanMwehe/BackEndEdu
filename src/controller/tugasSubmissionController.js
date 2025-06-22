@@ -10,32 +10,42 @@ export const submitTugas = async (req, res) => {
   try {
     const { tugas_id, answers } = req.body;
 
+    // Ambil data tugas
     const tugas = await Tugas.findById(tugas_id);
     if (!tugas) return res.status(404).json({ error: 'Tugas tidak ditemukan' });
 
+    // Ambil data mahasiswa yang login
     const mahasiswa = await Mahasiswa.findOne({ user_id: req.user.id });
     if (!mahasiswa) return res.status(404).json({ error: 'Mahasiswa tidak ditemukan' });
 
+    // Ambil materi dan populate tema-nya
     const materi = await Materi.findById(tugas.materi_id).populate('tema_id');
-    const jurusanYangBoleh = await Jurusan.find({ tema_id: materi.tema_id._id }).distinct('name');
+    if (!materi || !materi.tema_id) {
+      return res.status(404).json({ error: 'Materi atau tema tidak ditemukan' });
+    }
 
-    if (!jurusanYangBoleh.includes(mahasiswa.fakultas)) {
+    // ❗ Pastikan `tema.jurusan` adalah ObjectId di model Tema!
+    if (!materi.tema_id.jurusan.equals(mahasiswa.jurusan_id)) {
       return res.status(403).json({ error: 'Tugas ini tidak tersedia untuk jurusan kamu' });
     }
 
+    // Cari submission lama (jika ada)
     let submission = await TugasSubmission.findOne({
       tugas_id,
       mahasiswa_id: mahasiswa._id
     });
 
     if (submission) {
+      // Kalau sudah dinilai, tidak boleh submit ulang
       if (submission.status === 'graded') {
         return res.status(400).json({ message: 'Tugas sudah dinilai. Tidak bisa submit ulang.' });
       }
+      // Update jawaban
       submission.answers = answers;
       submission.submitted_at = new Date();
       submission.status = 'submitted';
     } else {
+      // Kalau belum pernah submit, buat baru
       submission = new TugasSubmission({
         tugas_id,
         mahasiswa_id: mahasiswa._id,
@@ -46,12 +56,11 @@ export const submitTugas = async (req, res) => {
     }
 
     await submission.save();
-    res.status(201).json({ message: 'Tugas submitted', submission });
+    res.status(201).json({ message: 'Tugas berhasil disubmit', submission });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 };
-
 // ✅ GET SEMUA SUBMISSION (untuk dosen/admin)
 export const getAllSubmissions = async (req, res) => {
   try {
@@ -175,16 +184,17 @@ export const getSubmissionsByTugas = async (req, res) => {
 // ✅ GET TUGAS YANG BELUM DIKERJAKAN OLEH MAHASISWA
 export const getTugasForMahasiswa = async (req, res) => {
   try {
-    const mahasiswa = await Mahasiswa.findOne({ user_id: req.user.id });
+    const mahasiswa = await Mahasiswa.findOne({ user_id: req.user.id }).populate({
+      path: 'jurusan_id',
+      populate: { path: 'tema_id' }
+    });
+
     if (!mahasiswa) return res.status(404).json({ message: 'Mahasiswa tidak ditemukan' });
 
-    const temaIdList = await Jurusan.find({
-      name: { $regex: new RegExp(`^${mahasiswa.fakultas}$`, 'i') }
-    }).distinct('tema_id');
+    const temaId = mahasiswa.jurusan_id?.tema_id?._id;
+    if (!temaId) return res.status(404).json({ message: 'Tema tidak ditemukan untuk jurusan kamu' });
 
-    if (!temaIdList.length) return res.status(404).json({ message: 'Tidak ada tema untuk jurusan ini' });
-
-    const materiIdList = await Materi.find({ tema_id: { $in: temaIdList } }).distinct('_id');
+    const materiIdList = await Materi.find({ tema_id: temaId }).distinct('_id');
 
     const semuaTugas = await Tugas.find({ materi_id: { $in: materiIdList } })
       .populate('materi_id', 'title')
@@ -195,8 +205,8 @@ export const getTugasForMahasiswa = async (req, res) => {
     }).distinct('tugas_id');
 
     const tugasBelumDikerjakan = semuaTugas.filter(
-  (tugas) => !tugasYangSudahDikerjakan.some((doneId) => tugas._id.equals(doneId))
-)
+      (tugas) => !tugasYangSudahDikerjakan.some((doneId) => tugas._id.equals(doneId))
+    );
 
     res.json(tugasBelumDikerjakan);
   } catch (err) {

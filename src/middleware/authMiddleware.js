@@ -26,11 +26,11 @@ export const isAdmin = (req, res, next) => {
   next();
 };
 
-export const allowRoles = (roles) => {
+export const allowRoles = (...roles) => {
   return (req, res, next) => {
     if (!roles.includes(req.user.role)) {
-      return res.status(403).json({ message: 'Akses ditolak: role tidak diizinkan' });
+      return res.status(403).json({ message: 'Akses ditolak: role tidak diizinkan' })
     }
-    next();
-  };
-};
+    next()
+  }
+}

@@ -1,10 +1,13 @@
 import Mahasiswa from '../models/Mahasiswa.js';
 import User from '../models/User.js';
+import Jurusan from '../models/Jurusan.js';
 import bcrypt from 'bcrypt';
 
 export const getAllMahasiswa = async (req, res) => {
   try {
-    const mahasiswa = await Mahasiswa.find().populate('user_id', 'username role');
+    const mahasiswa = await Mahasiswa.find()
+      .populate('user_id', 'username role')
+      .populate('jurusan_id', 'name'); // populate jurusan
     res.json(mahasiswa);
   } catch (err) {
     res.status(500).json({ message: 'Gagal mengambil data mahasiswa' });
@@ -13,7 +16,9 @@ export const getAllMahasiswa = async (req, res) => {
 
 export const getMahasiswaById = async (req, res) => {
   try {
-    const mahasiswa = await Mahasiswa.findById(req.params.id).populate('user_id', 'username role');
+    const mahasiswa = await Mahasiswa.findById(req.params.id)
+      .populate('user_id', 'username role')
+      .populate('jurusan_id', 'name');
     if (!mahasiswa) return res.status(404).json({ message: 'Mahasiswa tidak ditemukan' });
     res.json(mahasiswa);
   } catch (err) {
@@ -22,13 +27,16 @@ export const getMahasiswaById = async (req, res) => {
 };
 
 export const createMahasiswa = async (req, res) => {
-  const { username, password, name, nim, fakultas } = req.body;
+  const { username, password, name, nim, fakultas, jurusan_id } = req.body;
   try {
-    // cek duplikat username
+    if (!jurusan_id) return res.status(400).json({ message: 'Jurusan wajib dipilih' });
+
+    const jurusan = await Jurusan.findById(jurusan_id);
+    if (!jurusan) return res.status(404).json({ message: 'Jurusan tidak ditemukan' });
+
     const existing = await User.findOne({ username });
     if (existing) return res.status(400).json({ message: 'Username sudah digunakan' });
 
-    // bikin akun user
     const hashedPassword = await bcrypt.hash(password, 10);
     const newUser = new User({
       username,
@@ -38,12 +46,12 @@ export const createMahasiswa = async (req, res) => {
     });
     const savedUser = await newUser.save();
 
-    // bikin data mahasiswa
     const newMahasiswa = new Mahasiswa({
       user_id: savedUser._id,
       name,
       nim,
       fakultas,
+      jurusan_id,
       created_at: new Date(),
     });
 
@@ -56,8 +64,16 @@ export const createMahasiswa = async (req, res) => {
 
 export const updateMahasiswa = async (req, res) => {
   try {
+    const { jurusan_id } = req.body;
+
+    if (jurusan_id) {
+      const jurusan = await Jurusan.findById(jurusan_id);
+      if (!jurusan) return res.status(404).json({ message: 'Jurusan tidak ditemukan' });
+    }
+
     const updated = await Mahasiswa.findByIdAndUpdate(req.params.id, req.body, { new: true });
     if (!updated) return res.status(404).json({ message: 'Mahasiswa tidak ditemukan' });
+
     res.json(updated);
   } catch (err) {
     res.status(500).json({ message: 'Gagal update mahasiswa' });
@@ -69,10 +85,7 @@ export const deleteMahasiswa = async (req, res) => {
     const mahasiswa = await Mahasiswa.findById(req.params.id);
     if (!mahasiswa) return res.status(404).json({ message: 'Mahasiswa tidak ditemukan' });
 
-    // hapus user yang terkait
     await User.findByIdAndDelete(mahasiswa.user_id);
-
-    // hapus mahasiswa
     await Mahasiswa.findByIdAndDelete(req.params.id);
 
     res.json({ message: 'Mahasiswa dihapus' });
